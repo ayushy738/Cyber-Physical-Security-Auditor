@@ -2,25 +2,36 @@ import subprocess
 import json
 import os
 
-def to_wsl_path(win_path):
-    drive = win_path[0].lower()   # e.g. 'E' → 'e'
-    path_without_drive = win_path[2:]  # remove 'E:'
 
+def to_wsl_path(win_path):
+    drive = win_path[0].lower()
+    path_without_drive = win_path[2:]
     return f"/mnt/{drive}" + path_without_drive.replace("\\", "/")
 
 
+def add_severity(threats):
+    severity_map = {
+        "dangerous_command": "HIGH",
+        "reverse_shell": "CRITICAL",
+        "privilege_escalation": "HIGH",
+        "brute_force_attempt": "MEDIUM",
+        "suspicious_ip": "LOW",
+        "error_log": "LOW"
+    }
+
+    for t in threats:
+        t["severity"] = severity_map.get(t["type"], "LOW")
+
+    return threats
+
+
 def run_analyzer(filepath):
-    # Convert file path
     wsl_file = to_wsl_path(filepath)
 
-    # Get analyzer directory (Windows)
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     analyzer_dir = os.path.join(base_dir, "analyzer")
-
-    # Convert analyzer dir → WSL path
     wsl_analyzer_dir = to_wsl_path(analyzer_dir)
 
-    # ✅ IMPORTANT: use cd inside WSL
     cmd = f"cd {wsl_analyzer_dir} && ./analyzer {wsl_file}"
 
     result = subprocess.run(
@@ -29,11 +40,12 @@ def run_analyzer(filepath):
         text=True
     )
 
-    # Debug (VERY useful)
     print("STDOUT:", result.stdout)
     print("STDERR:", result.stderr)
 
     try:
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        data["threats"] = add_severity(data["threats"])
+        return data
     except:
         return {"threats": []}
